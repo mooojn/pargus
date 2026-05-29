@@ -1,0 +1,112 @@
+# Pargus Engine
+
+This folder contains the C core engine for Pargus.
+
+The engine currently implements the Part 1 foundation:
+
+- CLI argument parsing
+- `.txt` document discovery and loading
+- output directory creation
+- placeholder `similarity_matrix.csv`
+- placeholder `ai_scores.csv`
+- placeholder `report.json`
+- basic benchmark timing output
+
+The NLP and similarity algorithms will be added in later parts.
+
+## Environment
+
+Use WSL Ubuntu for building and running the engine.
+
+Install the baseline tools:
+
+```bash
+sudo apt update
+sudo apt install -y build-essential cmake make gcc g++
+```
+
+## Build
+
+From the repository root:
+
+```bash
+cmake -S engine -B engine/build -DCMAKE_BUILD_TYPE=Release
+cmake --build engine/build
+```
+
+The binary will be created at:
+
+```text
+engine/build/Pargus
+```
+
+## Run Sample
+
+From the repository root:
+
+```bash
+./engine/build/Pargus \
+  --input ./data/sample \
+  --out-dir ./output \
+  --verbose \
+  --benchmark
+```
+
+Expected output files:
+
+```text
+output/similarity_matrix.csv
+output/ai_scores.csv
+output/report.json
+```
+
+## CLI Options
+
+```bash
+./engine/build/Pargus --input DIR [options]
+```
+
+Required:
+
+```text
+--input DIR              Directory containing .txt documents
+```
+
+Options:
+
+```text
+--corpus FILE            Corpus path for later n-gram training
+--out-dir DIR            Output directory, default ./output
+--threads N              Thread count, default 4
+--sim-threshold VALUE    Similarity threshold 0.0 to 1.0, default 0.75
+--ai-threshold VALUE     AI threshold, default 50.0
+--bands N                LSH bands, default 20
+--rows N                 LSH rows, default 5
+--ngram N                N-gram order, default 3
+--mode MODE              openmp or serial, default openmp
+--benchmark              Print timing information
+--verbose                Print loaded documents
+--help                   Show usage
+```
+
+## Direct GCC Build
+
+Use this only if CMake is not available:
+
+```bash
+gcc -std=c11 -Wall -Wextra -Wpedantic -I engine \
+  engine/main.c \
+  engine/common/string_utils.c \
+  engine/common/timing.c \
+  engine/config/args.c \
+  engine/io/reader.c \
+  engine/io/writer.c \
+  -o engine/Pargus
+```
+
+Then run:
+
+```bash
+./engine/Pargus --input ./data/sample --out-dir ./output --verbose --benchmark
+```
+
