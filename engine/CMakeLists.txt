@@ -22,6 +22,7 @@ add_executable(Pargus
     nlp/tfidf.c
     nlp/minhash.c
     nlp/lsh.c
+    nlp/similarity.c
 )
 
 target_include_directories(Pargus PRIVATE
@@ -81,6 +82,22 @@ if(UNIX)
     target_link_libraries(test_minhash_lsh PRIVATE m)
 endif()
 add_test(NAME minhash_lsh COMMAND test_minhash_lsh)
+
+add_executable(test_similarity
+    tests/test_similarity.c
+    common/string_utils.c
+    config/args.c
+    nlp/stopwords.c
+    nlp/tokenizer.c
+    nlp/tfidf.c
+    nlp/lsh.c
+    nlp/similarity.c
+)
+target_include_directories(test_similarity PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+if(UNIX)
+    target_link_libraries(test_similarity PRIVATE m)
+endif()
+add_test(NAME similarity COMMAND test_similarity)
 
 if(MSVC)
     target_compile_options(Pargus PRIVATE /W4)

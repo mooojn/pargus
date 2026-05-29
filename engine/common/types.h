@@ -21,10 +21,12 @@ typedef struct {
     double io_ms;
     double tokenize_tfidf_ms;
     double minhash_lsh_ms;
+    double similarity_ms;
     double write_ms;
     double total_ms;
     int total_pairs;
     int candidate_pairs;
+    int flagged_pairs;
 } StageTimings;
 
 void document_free(Document *doc);

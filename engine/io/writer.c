@@ -1,6 +1,7 @@
 #include "io/writer.h"
 
 #include "common/string_utils.h"
+#include "common/timing.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -42,7 +43,7 @@ static FILE *open_output_file(const char *out_dir, const char *name)
     return fopen(path, "wb");
 }
 
-static int write_similarity_matrix(const EngineConfig *config, const DocumentList *docs)
+static int write_similarity_matrix(const EngineConfig *config, const DocumentList *docs, const SimilarityResults *similarity)
 {
     FILE *file = open_output_file(config->out_dir, "similarity_matrix.csv");
     if (!file) {
@@ -59,7 +60,7 @@ static int write_similarity_matrix(const EngineConfig *config, const DocumentLis
     for (int row = 0; row < docs->count; row++) {
         fprintf(file, "%s", docs->items[row].filename);
         for (int col = 0; col < docs->count; col++) {
-            fprintf(file, ",%.3f", row == col ? 1.0 : 0.0);
+            fprintf(file, ",%.3f", similarity_matrix_get(similarity, row, col));
         }
         fprintf(file, "\n");
     }
@@ -85,7 +86,7 @@ static int write_ai_scores(const EngineConfig *config, const DocumentList *docs)
     return 1;
 }
 
-static int write_report_json(const EngineConfig *config, const DocumentList *docs, const StageTimings *timings)
+static int write_report_json(const EngineConfig *config, const DocumentList *docs, const SimilarityResults *similarity, const StageTimings *timings)
 {
     FILE *file = open_output_file(config->out_dir, "report.json");
     if (!file) {
@@ -116,12 +117,26 @@ static int write_report_json(const EngineConfig *config, const DocumentList *doc
     for (int row = 0; row < docs->count; row++) {
         fprintf(file, "    [");
         for (int col = 0; col < docs->count; col++) {
-            fprintf(file, "%.3f%s", row == col ? 1.0 : 0.0, col + 1 == docs->count ? "" : ", ");
+            fprintf(file, "%.3f%s", similarity_matrix_get(similarity, row, col), col + 1 == docs->count ? "" : ", ");
         }
         fprintf(file, "]%s\n", row + 1 == docs->count ? "" : ",");
     }
     fprintf(file, "  ],\n");
-    fprintf(file, "  \"flagged_pairs\": [],\n");
+    fprintf(file, "  \"flagged_pairs\": [\n");
+    for (int i = 0; i < similarity->flagged_count; i++) {
+        const PairScore *pair = &similarity->flagged_pairs[i];
+        fprintf(file,
+            "    {\"doc_a\": %d, \"doc_b\": %d, \"filename_a\": \"%s\", \"filename_b\": \"%s\", \"cosine\": %.6f, \"rabin_karp\": %.6f, \"combined\": %.6f}%s\n",
+            pair->a,
+            pair->b,
+            docs->items[pair->a].filename,
+            docs->items[pair->b].filename,
+            pair->cosine,
+            pair->rabin_karp,
+            pair->combined,
+            i + 1 == similarity->flagged_count ? "" : ",");
+    }
+    fprintf(file, "  ],\n");
     fprintf(file, "  \"ai_scores\": [\n");
     for (int i = 0; i < docs->count; i++) {
         fprintf(file,
@@ -135,12 +150,14 @@ static int write_report_json(const EngineConfig *config, const DocumentList *doc
     fprintf(file, "      \"io\": %.3f,\n", timings ? timings->io_ms : 0.0);
     fprintf(file, "      \"tokenize_tfidf\": %.3f,\n", timings ? timings->tokenize_tfidf_ms : 0.0);
     fprintf(file, "      \"minhash_lsh\": %.3f,\n", timings ? timings->minhash_lsh_ms : 0.0);
+    fprintf(file, "      \"similarity\": %.3f,\n", timings ? timings->similarity_ms : 0.0);
     fprintf(file, "      \"write_outputs\": %.3f,\n", timings ? timings->write_ms : 0.0);
     fprintf(file, "      \"total\": %.3f\n", timings ? timings->total_ms : 0.0);
     fprintf(file, "    },\n");
     fprintf(file, "    \"candidate_generation\": {\n");
     fprintf(file, "      \"total_pairs\": %d,\n", timings ? timings->total_pairs : 0);
-    fprintf(file, "      \"candidate_pairs\": %d\n", timings ? timings->candidate_pairs : 0);
+    fprintf(file, "      \"candidate_pairs\": %d,\n", timings ? timings->candidate_pairs : 0);
+    fprintf(file, "      \"flagged_pairs\": %d\n", timings ? timings->flagged_pairs : 0);
     fprintf(file, "    }\n");
     fprintf(file, "  }\n");
     fprintf(file, "}\n");
@@ -149,20 +166,29 @@ static int write_report_json(const EngineConfig *config, const DocumentList *doc
     return 1;
 }
 
-int write_placeholder_outputs(const EngineConfig *config, const DocumentList *docs, const StageTimings *timings)
+int write_engine_outputs(const EngineConfig *config, const DocumentList *docs, const SimilarityResults *similarity, StageTimings *timings)
 {
+    double start_ms = pargus_now_ms();
+
     if (!ensure_dir(config->out_dir)) {
         return 0;
     }
 
-    if (!write_similarity_matrix(config, docs)) {
+    if (!write_similarity_matrix(config, docs, similarity)) {
         return 0;
     }
     if (!write_ai_scores(config, docs)) {
         return 0;
     }
-    if (!write_report_json(config, docs, timings)) {
+    if (timings) {
+        timings->write_ms = pargus_now_ms() - start_ms;
+        timings->total_ms += timings->write_ms;
+    }
+    if (!write_report_json(config, docs, similarity, timings)) {
         return 0;
+    }
+    if (timings) {
+        timings->write_ms = pargus_now_ms() - start_ms;
     }
 
     return 1;

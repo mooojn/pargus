@@ -6,6 +6,7 @@
 #include "io/writer.h"
 #include "nlp/lsh.h"
 #include "nlp/minhash.h"
+#include "nlp/similarity.h"
 #include "nlp/stopwords.h"
 #include "nlp/tfidf.h"
 
@@ -30,11 +31,13 @@ int main(int argc, char **argv)
     TfidfCorpus tfidf;
     MinHashCorpus minhash;
     PairList candidate_pairs;
+    SimilarityResults similarity;
     StageTimings timings = {0};
     double total_start;
     double io_start;
     double tfidf_start;
     double minhash_lsh_start;
+    double similarity_start;
     double write_start;
     int parsed;
     int exit_code = PARGUS_OK;
@@ -112,34 +115,50 @@ int main(int argc, char **argv)
         timings.candidate_pairs,
         timings.minhash_lsh_ms);
 
+    similarity_start = pargus_now_ms();
+    if (!compute_similarity_results(&tfidf, &candidate_pairs, &config, &similarity)) {
+        pair_list_free(&candidate_pairs);
+        minhash_corpus_free(&minhash);
+        tfidf_corpus_free(&tfidf);
+        stopword_set_free(&stopwords);
+        document_list_free(&docs);
+        return PARGUS_ERR_MEMORY;
+    }
+    timings.similarity_ms = pargus_now_ms() - similarity_start;
+    timings.flagged_pairs = similarity.flagged_count;
+
+    printf("Similarity: candidate_pairs=%d flagged_pairs=%d threshold=%.3f build_ms=%.3f\n",
+        candidate_pairs.count,
+        similarity.flagged_count,
+        config.sim_threshold,
+        timings.similarity_ms);
+
     write_start = pargus_now_ms();
-    if (!write_placeholder_outputs(&config, &docs, &timings)) {
+    timings.total_ms = pargus_now_ms() - total_start;
+    if (!write_engine_outputs(&config, &docs, &similarity, &timings)) {
         exit_code = PARGUS_ERR_IO;
     }
     timings.write_ms = pargus_now_ms() - write_start;
     timings.total_ms = pargus_now_ms() - total_start;
 
-    if (exit_code == PARGUS_OK) {
-        if (!write_placeholder_outputs(&config, &docs, &timings)) {
-            exit_code = PARGUS_ERR_IO;
-        }
-    }
-
     if (config.benchmark) {
-        printf("{\"stage_times_ms\":{\"io\":%.3f,\"tokenize_tfidf\":%.3f,\"minhash_lsh\":%.3f,\"write_outputs\":%.3f,\"total\":%.3f},\"candidate_pairs\":%d,\"total_pairs\":%d}\n",
+        printf("{\"stage_times_ms\":{\"io\":%.3f,\"tokenize_tfidf\":%.3f,\"minhash_lsh\":%.3f,\"similarity\":%.3f,\"write_outputs\":%.3f,\"total\":%.3f},\"candidate_pairs\":%d,\"flagged_pairs\":%d,\"total_pairs\":%d}\n",
             timings.io_ms,
             timings.tokenize_tfidf_ms,
             timings.minhash_lsh_ms,
+            timings.similarity_ms,
             timings.write_ms,
             timings.total_ms,
             timings.candidate_pairs,
+            timings.flagged_pairs,
             timings.total_pairs);
     }
 
     if (config.verbose && exit_code == PARGUS_OK) {
-        printf("Wrote placeholder outputs to %s\n", config.out_dir);
+        printf("Wrote engine outputs to %s\n", config.out_dir);
     }
 
+    similarity_results_free(&similarity);
     pair_list_free(&candidate_pairs);
     minhash_corpus_free(&minhash);
     tfidf_corpus_free(&tfidf);
