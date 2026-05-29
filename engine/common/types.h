@@ -22,6 +22,7 @@ typedef struct {
     double tokenize_tfidf_ms;
     double minhash_lsh_ms;
     double similarity_ms;
+    double perplexity_ms;
     double write_ms;
     double total_ms;
     int total_pairs;

@@ -2,7 +2,7 @@
 
 This folder contains the C core engine for Pargus.
 
-The engine currently implements the Part 1 through Part 4 core plagiarism pipeline:
+The engine currently implements the complete Part 1 through Part 5 core pipeline:
 
 - CLI argument parsing
 - `.txt` document discovery and loading
@@ -17,13 +17,19 @@ The engine currently implements the Part 1 through Part 4 core plagiarism pipeli
 - weighted plagiarism score calculation
 - symmetric similarity matrix generation
 - thresholded flagged plagiarism pairs in `report.json`
+- n-gram language-model training from `--corpus`
+- Laplace-smoothed document perplexity scoring
+- sentence-level perplexity variance for burstiness
+- AI-authorship score generation
 - output directory creation
 - real `similarity_matrix.csv`
-- placeholder `ai_scores.csv`
+- real `ai_scores.csv`
 - real plagiarism sections in `report.json`
-- basic benchmark timing output
+- plagiarism, AI-authorship, and benchmark sections in `report.json`
+- per-stage benchmark timing output
 
-AI-authorship scoring is still a placeholder and will be added in Part 5.
+If `--corpus` is omitted or cannot be read, the engine uses a small built-in
+fallback corpus so development runs still complete.
 
 ## Environment
 
@@ -58,6 +64,7 @@ From the repository root:
 ```bash
 ./engine/build/Pargus \
   --input ./data/sample \
+  --corpus ./data/sample_corpus.txt \
   --out-dir ./output \
   --verbose \
   --benchmark
@@ -77,6 +84,7 @@ The run also prints a TF-IDF summary:
 TF-IDF: documents=3 total_tokens=... vocabulary=... build_ms=...
 MinHash/LSH: signatures=3 signature_length=100 total_pairs=3 candidate_pairs=... build_ms=...
 Similarity: candidate_pairs=... flagged_pairs=... threshold=0.750 build_ms=...
+AI scoring: documents=3 ngram=3 vocabulary=... build_ms=...
 ```
 
 `similarity_matrix.csv` is square and symmetric, with `1.000` on the diagonal.
@@ -89,6 +97,16 @@ combined = 0.6 * cosine_similarity + 0.4 * rabin_karp_overlap
 
 Pairs with `combined >= --sim-threshold` are listed in the `flagged_pairs`
 section of `report.json` with cosine, Rabin-Karp, and combined scores.
+
+`ai_scores.csv` contains one row per document:
+
+```text
+filename,mean_perplexity,ppl_variance,ai_score,flagged
+```
+
+The AI score is a 0-100 heuristic based on lower mean perplexity and lower
+sentence-level perplexity variance. Documents with `ai_score >= --ai-threshold`
+are flagged in both `ai_scores.csv` and `report.json`.
 
 ## CLI Options
 
@@ -105,7 +123,7 @@ Required:
 Options:
 
 ```text
---corpus FILE            Corpus path for later n-gram training
+--corpus FILE            Corpus path for n-gram training
 --out-dir DIR            Output directory, default ./output
 --threads N              Thread count, default 4
 --sim-threshold VALUE    Similarity threshold 0.0 to 1.0, default 0.75
@@ -137,6 +155,7 @@ gcc -std=c11 -Wall -Wextra -Wpedantic -I engine \
   engine/nlp/minhash.c \
   engine/nlp/lsh.c \
   engine/nlp/similarity.c \
+  engine/nlp/ngram.c \
   -o engine/Pargus \
   -lm
 ```
@@ -144,5 +163,5 @@ gcc -std=c11 -Wall -Wextra -Wpedantic -I engine \
 Then run:
 
 ```bash
-./engine/Pargus --input ./data/sample --out-dir ./output --verbose --benchmark
+./engine/Pargus --input ./data/sample --corpus ./data/sample_corpus.txt --out-dir ./output --verbose --benchmark
 ```

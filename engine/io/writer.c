@@ -69,7 +69,7 @@ static int write_similarity_matrix(const EngineConfig *config, const DocumentLis
     return 1;
 }
 
-static int write_ai_scores(const EngineConfig *config, const DocumentList *docs)
+static int write_ai_scores(const EngineConfig *config, const AiScoreList *ai_scores)
 {
     FILE *file = open_output_file(config->out_dir, "ai_scores.csv");
     if (!file) {
@@ -78,15 +78,20 @@ static int write_ai_scores(const EngineConfig *config, const DocumentList *docs)
     }
 
     fprintf(file, "filename,mean_perplexity,ppl_variance,ai_score,flagged\n");
-    for (int i = 0; i < docs->count; i++) {
-        fprintf(file, "%s,0.000,0.000,0.000,false\n", docs->items[i].filename);
+    for (int i = 0; i < ai_scores->count; i++) {
+        fprintf(file, "%s,%.3f,%.3f,%.3f,%s\n",
+            ai_scores->items[i].filename,
+            ai_scores->items[i].mean_perplexity,
+            ai_scores->items[i].perplexity_variance,
+            ai_scores->items[i].ai_score,
+            ai_scores->items[i].flagged ? "true" : "false");
     }
 
     fclose(file);
     return 1;
 }
 
-static int write_report_json(const EngineConfig *config, const DocumentList *docs, const SimilarityResults *similarity, const StageTimings *timings)
+static int write_report_json(const EngineConfig *config, const DocumentList *docs, const SimilarityResults *similarity, const AiScoreList *ai_scores, const StageTimings *timings)
 {
     FILE *file = open_output_file(config->out_dir, "report.json");
     if (!file) {
@@ -138,11 +143,15 @@ static int write_report_json(const EngineConfig *config, const DocumentList *doc
     }
     fprintf(file, "  ],\n");
     fprintf(file, "  \"ai_scores\": [\n");
-    for (int i = 0; i < docs->count; i++) {
+    for (int i = 0; i < ai_scores->count; i++) {
         fprintf(file,
-            "    {\"filename\": \"%s\", \"mean_perplexity\": 0.0, \"perplexity_variance\": 0.0, \"ai_score\": 0.0, \"flagged\": false}%s\n",
-            docs->items[i].filename,
-            i + 1 == docs->count ? "" : ",");
+            "    {\"filename\": \"%s\", \"mean_perplexity\": %.6f, \"perplexity_variance\": %.6f, \"ai_score\": %.6f, \"flagged\": %s}%s\n",
+            ai_scores->items[i].filename,
+            ai_scores->items[i].mean_perplexity,
+            ai_scores->items[i].perplexity_variance,
+            ai_scores->items[i].ai_score,
+            ai_scores->items[i].flagged ? "true" : "false",
+            i + 1 == ai_scores->count ? "" : ",");
     }
     fprintf(file, "  ],\n");
     fprintf(file, "  \"benchmark\": {\n");
@@ -151,6 +160,7 @@ static int write_report_json(const EngineConfig *config, const DocumentList *doc
     fprintf(file, "      \"tokenize_tfidf\": %.3f,\n", timings ? timings->tokenize_tfidf_ms : 0.0);
     fprintf(file, "      \"minhash_lsh\": %.3f,\n", timings ? timings->minhash_lsh_ms : 0.0);
     fprintf(file, "      \"similarity\": %.3f,\n", timings ? timings->similarity_ms : 0.0);
+    fprintf(file, "      \"perplexity\": %.3f,\n", timings ? timings->perplexity_ms : 0.0);
     fprintf(file, "      \"write_outputs\": %.3f,\n", timings ? timings->write_ms : 0.0);
     fprintf(file, "      \"total\": %.3f\n", timings ? timings->total_ms : 0.0);
     fprintf(file, "    },\n");
@@ -166,7 +176,7 @@ static int write_report_json(const EngineConfig *config, const DocumentList *doc
     return 1;
 }
 
-int write_engine_outputs(const EngineConfig *config, const DocumentList *docs, const SimilarityResults *similarity, StageTimings *timings)
+int write_engine_outputs(const EngineConfig *config, const DocumentList *docs, const SimilarityResults *similarity, const AiScoreList *ai_scores, StageTimings *timings)
 {
     double start_ms = pargus_now_ms();
 
@@ -177,14 +187,14 @@ int write_engine_outputs(const EngineConfig *config, const DocumentList *docs, c
     if (!write_similarity_matrix(config, docs, similarity)) {
         return 0;
     }
-    if (!write_ai_scores(config, docs)) {
+    if (!write_ai_scores(config, ai_scores)) {
         return 0;
     }
     if (timings) {
         timings->write_ms = pargus_now_ms() - start_ms;
         timings->total_ms += timings->write_ms;
     }
-    if (!write_report_json(config, docs, similarity, timings)) {
+    if (!write_report_json(config, docs, similarity, ai_scores, timings)) {
         return 0;
     }
     if (timings) {

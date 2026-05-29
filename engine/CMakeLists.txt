@@ -23,6 +23,7 @@ add_executable(Pargus
     nlp/minhash.c
     nlp/lsh.c
     nlp/similarity.c
+    nlp/ngram.c
 )
 
 target_include_directories(Pargus PRIVATE

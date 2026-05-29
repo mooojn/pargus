@@ -6,6 +6,7 @@
 #include "io/writer.h"
 #include "nlp/lsh.h"
 #include "nlp/minhash.h"
+#include "nlp/ngram.h"
 #include "nlp/similarity.h"
 #include "nlp/stopwords.h"
 #include "nlp/tfidf.h"
@@ -32,12 +33,15 @@ int main(int argc, char **argv)
     MinHashCorpus minhash;
     PairList candidate_pairs;
     SimilarityResults similarity;
+    NGramModel ngram_model;
+    AiScoreList ai_scores;
     StageTimings timings = {0};
     double total_start;
     double io_start;
     double tfidf_start;
     double minhash_lsh_start;
     double similarity_start;
+    double perplexity_start;
     double write_start;
     int parsed;
     int exit_code = PARGUS_OK;
@@ -133,20 +137,41 @@ int main(int argc, char **argv)
         config.sim_threshold,
         timings.similarity_ms);
 
+    perplexity_start = pargus_now_ms();
+    if (!train_ngram_model(config.corpus_path, &stopwords, &config, &ngram_model) ||
+        !score_ai_documents(&docs, &stopwords, &ngram_model, &config, &ai_scores)) {
+        ngram_model_free(&ngram_model);
+        similarity_results_free(&similarity);
+        pair_list_free(&candidate_pairs);
+        minhash_corpus_free(&minhash);
+        tfidf_corpus_free(&tfidf);
+        stopword_set_free(&stopwords);
+        document_list_free(&docs);
+        return PARGUS_ERR_MEMORY;
+    }
+    timings.perplexity_ms = pargus_now_ms() - perplexity_start;
+
+    printf("AI scoring: documents=%d ngram=%d vocabulary=%d build_ms=%.3f\n",
+        ai_scores.count,
+        ngram_model.order,
+        ngram_model.vocabulary.count,
+        timings.perplexity_ms);
+
     write_start = pargus_now_ms();
     timings.total_ms = pargus_now_ms() - total_start;
-    if (!write_engine_outputs(&config, &docs, &similarity, &timings)) {
+    if (!write_engine_outputs(&config, &docs, &similarity, &ai_scores, &timings)) {
         exit_code = PARGUS_ERR_IO;
     }
     timings.write_ms = pargus_now_ms() - write_start;
     timings.total_ms = pargus_now_ms() - total_start;
 
     if (config.benchmark) {
-        printf("{\"stage_times_ms\":{\"io\":%.3f,\"tokenize_tfidf\":%.3f,\"minhash_lsh\":%.3f,\"similarity\":%.3f,\"write_outputs\":%.3f,\"total\":%.3f},\"candidate_pairs\":%d,\"flagged_pairs\":%d,\"total_pairs\":%d}\n",
+        printf("{\"stage_times_ms\":{\"io\":%.3f,\"tokenize_tfidf\":%.3f,\"minhash_lsh\":%.3f,\"similarity\":%.3f,\"perplexity\":%.3f,\"write_outputs\":%.3f,\"total\":%.3f},\"candidate_pairs\":%d,\"flagged_pairs\":%d,\"total_pairs\":%d}\n",
             timings.io_ms,
             timings.tokenize_tfidf_ms,
             timings.minhash_lsh_ms,
             timings.similarity_ms,
+            timings.perplexity_ms,
             timings.write_ms,
             timings.total_ms,
             timings.candidate_pairs,
@@ -158,6 +183,8 @@ int main(int argc, char **argv)
         printf("Wrote engine outputs to %s\n", config.out_dir);
     }
 
+    ai_score_list_free(&ai_scores);
+    ngram_model_free(&ngram_model);
     similarity_results_free(&similarity);
     pair_list_free(&candidate_pairs);
     minhash_corpus_free(&minhash);
