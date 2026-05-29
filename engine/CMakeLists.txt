@@ -20,6 +20,8 @@ add_executable(Pargus
     nlp/stopwords.c
     nlp/tokenizer.c
     nlp/tfidf.c
+    nlp/minhash.c
+    nlp/lsh.c
 )
 
 target_include_directories(Pargus PRIVATE
@@ -63,6 +65,22 @@ if(UNIX)
     target_link_libraries(test_tfidf PRIVATE m)
 endif()
 add_test(NAME tfidf COMMAND test_tfidf)
+
+add_executable(test_minhash_lsh
+    tests/test_minhash_lsh.c
+    common/string_utils.c
+    config/args.c
+    nlp/stopwords.c
+    nlp/tokenizer.c
+    nlp/tfidf.c
+    nlp/minhash.c
+    nlp/lsh.c
+)
+target_include_directories(test_minhash_lsh PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+if(UNIX)
+    target_link_libraries(test_minhash_lsh PRIVATE m)
+endif()
+add_test(NAME minhash_lsh COMMAND test_minhash_lsh)
 
 if(MSVC)
     target_compile_options(Pargus PRIVATE /W4)

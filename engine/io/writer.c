@@ -134,8 +134,13 @@ static int write_report_json(const EngineConfig *config, const DocumentList *doc
     fprintf(file, "    \"stage_times_ms\": {\n");
     fprintf(file, "      \"io\": %.3f,\n", timings ? timings->io_ms : 0.0);
     fprintf(file, "      \"tokenize_tfidf\": %.3f,\n", timings ? timings->tokenize_tfidf_ms : 0.0);
+    fprintf(file, "      \"minhash_lsh\": %.3f,\n", timings ? timings->minhash_lsh_ms : 0.0);
     fprintf(file, "      \"write_outputs\": %.3f,\n", timings ? timings->write_ms : 0.0);
     fprintf(file, "      \"total\": %.3f\n", timings ? timings->total_ms : 0.0);
+    fprintf(file, "    },\n");
+    fprintf(file, "    \"candidate_generation\": {\n");
+    fprintf(file, "      \"total_pairs\": %d,\n", timings ? timings->total_pairs : 0);
+    fprintf(file, "      \"candidate_pairs\": %d\n", timings ? timings->candidate_pairs : 0);
     fprintf(file, "    }\n");
     fprintf(file, "  }\n");
     fprintf(file, "}\n");

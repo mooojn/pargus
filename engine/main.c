@@ -4,6 +4,8 @@
 #include "config/args.h"
 #include "io/reader.h"
 #include "io/writer.h"
+#include "nlp/lsh.h"
+#include "nlp/minhash.h"
 #include "nlp/stopwords.h"
 #include "nlp/tfidf.h"
 
@@ -26,10 +28,13 @@ int main(int argc, char **argv)
     DocumentList docs;
     StopwordSet stopwords;
     TfidfCorpus tfidf;
+    MinHashCorpus minhash;
+    PairList candidate_pairs;
     StageTimings timings = {0};
     double total_start;
     double io_start;
     double tfidf_start;
+    double minhash_lsh_start;
     double write_start;
     int parsed;
     int exit_code = PARGUS_OK;
@@ -82,6 +87,31 @@ int main(int argc, char **argv)
         tfidf.vocabulary.count,
         timings.tokenize_tfidf_ms);
 
+    minhash_lsh_start = pargus_now_ms();
+    if (!build_minhash_corpus(&tfidf, &config, &minhash)) {
+        tfidf_corpus_free(&tfidf);
+        stopword_set_free(&stopwords);
+        document_list_free(&docs);
+        return PARGUS_ERR_MEMORY;
+    }
+    if (!build_lsh_candidates(&minhash, &config, &candidate_pairs)) {
+        minhash_corpus_free(&minhash);
+        tfidf_corpus_free(&tfidf);
+        stopword_set_free(&stopwords);
+        document_list_free(&docs);
+        return PARGUS_ERR_MEMORY;
+    }
+    timings.minhash_lsh_ms = pargus_now_ms() - minhash_lsh_start;
+    timings.total_pairs = docs.count * (docs.count - 1) / 2;
+    timings.candidate_pairs = candidate_pairs.count;
+
+    printf("MinHash/LSH: signatures=%d signature_length=%d total_pairs=%d candidate_pairs=%d build_ms=%.3f\n",
+        minhash.count,
+        minhash.length,
+        timings.total_pairs,
+        timings.candidate_pairs,
+        timings.minhash_lsh_ms);
+
     write_start = pargus_now_ms();
     if (!write_placeholder_outputs(&config, &docs, &timings)) {
         exit_code = PARGUS_ERR_IO;
@@ -90,26 +120,28 @@ int main(int argc, char **argv)
     timings.total_ms = pargus_now_ms() - total_start;
 
     if (exit_code == PARGUS_OK) {
-        write_start = pargus_now_ms();
         if (!write_placeholder_outputs(&config, &docs, &timings)) {
             exit_code = PARGUS_ERR_IO;
         }
-        timings.write_ms += pargus_now_ms() - write_start;
-        timings.total_ms = pargus_now_ms() - total_start;
     }
 
     if (config.benchmark) {
-        printf("{\"stage_times_ms\":{\"io\":%.3f,\"tokenize_tfidf\":%.3f,\"write_outputs\":%.3f,\"total\":%.3f}}\n",
+        printf("{\"stage_times_ms\":{\"io\":%.3f,\"tokenize_tfidf\":%.3f,\"minhash_lsh\":%.3f,\"write_outputs\":%.3f,\"total\":%.3f},\"candidate_pairs\":%d,\"total_pairs\":%d}\n",
             timings.io_ms,
             timings.tokenize_tfidf_ms,
+            timings.minhash_lsh_ms,
             timings.write_ms,
-            timings.total_ms);
+            timings.total_ms,
+            timings.candidate_pairs,
+            timings.total_pairs);
     }
 
     if (config.verbose && exit_code == PARGUS_OK) {
         printf("Wrote placeholder outputs to %s\n", config.out_dir);
     }
 
+    pair_list_free(&candidate_pairs);
+    minhash_corpus_free(&minhash);
     tfidf_corpus_free(&tfidf);
     stopword_set_free(&stopwords);
     document_list_free(&docs);
