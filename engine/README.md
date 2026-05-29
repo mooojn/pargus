@@ -21,6 +21,10 @@ The engine currently implements the complete Part 1 through Part 5 core pipeline
 - Laplace-smoothed document perplexity scoring
 - sentence-level perplexity variance for burstiness
 - AI-authorship score generation
+- Pthreads document loading mode on POSIX/WSL
+- shared queue/cache-padding scaffolding under `engine/parallel/`
+- escaped JSON and CSV output strings
+- rolling Rabin-Karp token-window fingerprints
 - output directory creation
 - real `similarity_matrix.csv`
 - real `ai_scores.csv`
@@ -67,6 +71,7 @@ From the repository root:
   --corpus ./data/sample_corpus.txt \
   --out-dir ./output \
   --verbose \
+  --mode openmp \
   --benchmark
 ```
 
@@ -131,7 +136,7 @@ Options:
 --bands N                LSH bands, default 20
 --rows N                 LSH rows, default 5
 --ngram N                N-gram order, default 3
---mode MODE              openmp or serial, default openmp
+--mode MODE              openmp, pthreads, or serial, default openmp
 --benchmark              Print timing information
 --verbose                Print loaded documents
 --help                   Show usage
@@ -149,6 +154,8 @@ gcc -std=c11 -Wall -Wextra -Wpedantic -I engine \
   engine/config/args.c \
   engine/io/reader.c \
   engine/io/writer.c \
+  engine/parallel/doc_queue.c \
+  engine/parallel/work_queue.c \
   engine/nlp/stopwords.c \
   engine/nlp/tokenizer.c \
   engine/nlp/tfidf.c \
@@ -163,5 +170,36 @@ gcc -std=c11 -Wall -Wextra -Wpedantic -I engine \
 Then run:
 
 ```bash
-./engine/Pargus --input ./data/sample --corpus ./data/sample_corpus.txt --out-dir ./output --verbose --benchmark
+./engine/Pargus --input ./data/sample --corpus ./data/sample_corpus.txt --out-dir ./output --mode openmp --verbose --benchmark
+```
+
+## Parallel Modes
+
+```text
+openmp      Uses OpenMP for tokenization, MinHash, similarity, and AI scoring.
+pthreads    Uses Pthreads for POSIX/WSL document loading, then runs analysis in deterministic serial-style stages.
+serial      Single-thread baseline for comparison.
+```
+
+MPI is not implemented.
+
+## Verification
+
+Recommended WSL Ubuntu verification:
+
+```bash
+cmake -S engine -B engine/build -DCMAKE_BUILD_TYPE=Release
+cmake --build engine/build
+ctest --test-dir engine/build --output-on-failure
+
+./engine/build/Pargus \
+  --input ./data/sample \
+  --corpus ./data/sample_corpus.txt \
+  --threads 4 \
+  --sim-threshold 0.75 \
+  --ai-threshold 50.0 \
+  --out-dir ./output \
+  --mode openmp \
+  --benchmark \
+  --verbose
 ```
