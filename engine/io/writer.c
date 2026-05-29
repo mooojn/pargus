@@ -133,6 +133,7 @@ static int write_report_json(const EngineConfig *config, const DocumentList *doc
     fprintf(file, "  \"benchmark\": {\n");
     fprintf(file, "    \"stage_times_ms\": {\n");
     fprintf(file, "      \"io\": %.3f,\n", timings ? timings->io_ms : 0.0);
+    fprintf(file, "      \"tokenize_tfidf\": %.3f,\n", timings ? timings->tokenize_tfidf_ms : 0.0);
     fprintf(file, "      \"write_outputs\": %.3f,\n", timings ? timings->write_ms : 0.0);
     fprintf(file, "      \"total\": %.3f\n", timings ? timings->total_ms : 0.0);
     fprintf(file, "    }\n");
@@ -161,4 +162,3 @@ int write_placeholder_outputs(const EngineConfig *config, const DocumentList *do
 
     return 1;
 }
-

@@ -2,17 +2,21 @@
 
 This folder contains the C core engine for Pargus.
 
-The engine currently implements the Part 1 foundation:
+The engine currently implements the Part 1 and Part 2 foundation:
 
 - CLI argument parsing
 - `.txt` document discovery and loading
+- tokenization
+- stopword removal
+- lightweight suffix normalization
+- TF-IDF vocabulary and sparse vector construction
 - output directory creation
 - placeholder `similarity_matrix.csv`
 - placeholder `ai_scores.csv`
 - placeholder `report.json`
 - basic benchmark timing output
 
-The NLP and similarity algorithms will be added in later parts.
+MinHash, LSH, similarity scoring, and AI-authorship scoring will be added in later parts.
 
 ## Environment
 
@@ -60,6 +64,12 @@ output/ai_scores.csv
 output/report.json
 ```
 
+The run also prints a TF-IDF summary:
+
+```text
+TF-IDF: documents=3 total_tokens=... vocabulary=... build_ms=...
+```
+
 ## CLI Options
 
 ```bash
@@ -101,7 +111,11 @@ gcc -std=c11 -Wall -Wextra -Wpedantic -I engine \
   engine/config/args.c \
   engine/io/reader.c \
   engine/io/writer.c \
-  -o engine/Pargus
+  engine/nlp/stopwords.c \
+  engine/nlp/tokenizer.c \
+  engine/nlp/tfidf.c \
+  -o engine/Pargus \
+  -lm
 ```
 
 Then run:
@@ -109,4 +123,3 @@ Then run:
 ```bash
 ./engine/Pargus --input ./data/sample --out-dir ./output --verbose --benchmark
 ```
-

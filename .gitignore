@@ -3,9 +3,10 @@ data/*
 !data/sample/
 !data/sample/**
 !data/sample_corpus.txt
+!data/stopwords.txt
 output/
 engine/build/
-engine/Pargus.exe
+engine/*.exe
 engine/Pargus
 *.obj
 *.o

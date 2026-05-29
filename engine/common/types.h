@@ -19,6 +19,7 @@ typedef struct {
 
 typedef struct {
     double io_ms;
+    double tokenize_tfidf_ms;
     double write_ms;
     double total_ms;
 } StageTimings;
@@ -28,4 +29,3 @@ void document_list_init(DocumentList *list);
 void document_list_free(DocumentList *list);
 
 #endif
-

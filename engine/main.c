@@ -4,6 +4,8 @@
 #include "config/args.h"
 #include "io/reader.h"
 #include "io/writer.h"
+#include "nlp/stopwords.h"
+#include "nlp/tfidf.h"
 
 #include <stdio.h>
 
@@ -22,9 +24,12 @@ int main(int argc, char **argv)
 {
     EngineConfig config;
     DocumentList docs;
-    StageTimings timings = {0.0, 0.0, 0.0};
+    StopwordSet stopwords;
+    TfidfCorpus tfidf;
+    StageTimings timings = {0};
     double total_start;
     double io_start;
+    double tfidf_start;
     double write_start;
     int parsed;
     int exit_code = PARGUS_OK;
@@ -58,6 +63,25 @@ int main(int argc, char **argv)
         print_loaded_documents(&docs);
     }
 
+    stopword_set_init(&stopwords);
+    if (!stopword_set_load(&stopwords, "./data/stopwords.txt") && config.verbose) {
+        printf("Stopword file not found at ./data/stopwords.txt; continuing without stopword removal\n");
+    }
+
+    tfidf_start = pargus_now_ms();
+    if (!build_tfidf_corpus(&docs, &stopwords, &config, &tfidf)) {
+        stopword_set_free(&stopwords);
+        document_list_free(&docs);
+        return PARGUS_ERR_MEMORY;
+    }
+    timings.tokenize_tfidf_ms = pargus_now_ms() - tfidf_start;
+
+    printf("TF-IDF: documents=%d total_tokens=%d vocabulary=%d build_ms=%.3f\n",
+        docs.count,
+        tfidf.total_tokens,
+        tfidf.vocabulary.count,
+        timings.tokenize_tfidf_ms);
+
     write_start = pargus_now_ms();
     if (!write_placeholder_outputs(&config, &docs, &timings)) {
         exit_code = PARGUS_ERR_IO;
@@ -75,8 +99,9 @@ int main(int argc, char **argv)
     }
 
     if (config.benchmark) {
-        printf("{\"stage_times_ms\":{\"io\":%.3f,\"write_outputs\":%.3f,\"total\":%.3f}}\n",
+        printf("{\"stage_times_ms\":{\"io\":%.3f,\"tokenize_tfidf\":%.3f,\"write_outputs\":%.3f,\"total\":%.3f}}\n",
             timings.io_ms,
+            timings.tokenize_tfidf_ms,
             timings.write_ms,
             timings.total_ms);
     }
@@ -85,6 +110,8 @@ int main(int argc, char **argv)
         printf("Wrote placeholder outputs to %s\n", config.out_dir);
     }
 
+    tfidf_corpus_free(&tfidf);
+    stopword_set_free(&stopwords);
     document_list_free(&docs);
     return exit_code;
 }

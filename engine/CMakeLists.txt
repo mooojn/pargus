@@ -17,6 +17,9 @@ add_executable(Pargus
     config/args.c
     io/reader.c
     io/writer.c
+    nlp/stopwords.c
+    nlp/tokenizer.c
+    nlp/tfidf.c
 )
 
 target_include_directories(Pargus PRIVATE
@@ -32,9 +35,37 @@ endif()
 find_package(Threads REQUIRED)
 target_link_libraries(Pargus PRIVATE Threads::Threads)
 
+if(UNIX)
+    target_link_libraries(Pargus PRIVATE m)
+endif()
+
+enable_testing()
+
+add_executable(test_tokenizer
+    tests/test_tokenizer.c
+    common/string_utils.c
+    nlp/stopwords.c
+    nlp/tokenizer.c
+)
+target_include_directories(test_tokenizer PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+add_test(NAME tokenizer COMMAND test_tokenizer)
+
+add_executable(test_tfidf
+    tests/test_tfidf.c
+    common/string_utils.c
+    config/args.c
+    nlp/stopwords.c
+    nlp/tokenizer.c
+    nlp/tfidf.c
+)
+target_include_directories(test_tfidf PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+if(UNIX)
+    target_link_libraries(test_tfidf PRIVATE m)
+endif()
+add_test(NAME tfidf COMMAND test_tfidf)
+
 if(MSVC)
     target_compile_options(Pargus PRIVATE /W4)
 else()
     target_compile_options(Pargus PRIVATE -Wall -Wextra -Wpedantic)
 endif()
-
