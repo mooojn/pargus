@@ -33,6 +33,8 @@ static unsigned int token_hash(const char *token)
 static int build_unique_fingerprints(const TokenList *tokens, int shingle_size, unsigned int **out_values, int *out_count)
 {
     unsigned int *values;
+    unsigned int base_power = 1u;
+    unsigned int hash = 0u;
     int raw_count;
     int unique_count = 0;
 
@@ -49,11 +51,20 @@ static int build_unique_fingerprints(const TokenList *tokens, int shingle_size, 
         return 0;
     }
 
-    for (int start = 0; start < raw_count; start++) {
-        unsigned int hash = 0u;
-        for (int i = 0; i < shingle_size; i++) {
-            hash = hash * RABIN_KARP_BASE + token_hash(tokens->tokens[start + i]);
-        }
+    for (int i = 1; i < shingle_size; i++) {
+        base_power *= RABIN_KARP_BASE;
+    }
+
+    for (int i = 0; i < shingle_size; i++) {
+        hash = hash * RABIN_KARP_BASE + token_hash(tokens->tokens[i]);
+    }
+    values[0] = hash == 0 ? 1u : hash;
+
+    for (int start = 1; start < raw_count; start++) {
+        unsigned int outgoing = token_hash(tokens->tokens[start - 1]);
+        unsigned int incoming = token_hash(tokens->tokens[start + shingle_size - 1]);
+
+        hash = (hash - outgoing * base_power) * RABIN_KARP_BASE + incoming;
         values[start] = hash == 0 ? 1u : hash;
     }
 

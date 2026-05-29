@@ -154,6 +154,10 @@ static int build_vectors_from_tokens(const DocumentList *docs, TfidfCorpus *corp
     TermCountList *doc_counts;
     int ok = 1;
 
+    if (!docs || docs->count <= 0) {
+        return 0;
+    }
+
     doc_counts = (TermCountList *)calloc((size_t)docs->count, sizeof(TermCountList));
     if (!doc_counts) {
         return 0;
@@ -215,6 +219,9 @@ static int build_vectors_from_tokens(const DocumentList *docs, TfidfCorpus *corp
 int build_tfidf_corpus(const DocumentList *docs, const StopwordSet *stopwords, const EngineConfig *config, TfidfCorpus *corpus)
 {
     memset(corpus, 0, sizeof(*corpus));
+    if (!docs || docs->count <= 0) {
+        return 0;
+    }
     corpus->doc_count = docs->count;
     vocabulary_init(&corpus->vocabulary);
 

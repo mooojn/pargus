@@ -24,7 +24,10 @@ static int ensure_dir(const char *path)
     }
 #else
     if (mkdir(path, 0775) == 0 || errno == EEXIST) {
-        return 1;
+        struct stat st;
+        if (stat(path, &st) == 0 && S_ISDIR(st.st_mode)) {
+            return 1;
+        }
     }
 #endif
     fprintf(stderr, "Failed to create output directory: %s\n", path);
@@ -43,6 +46,78 @@ static FILE *open_output_file(const char *out_dir, const char *name)
     return fopen(path, "wb");
 }
 
+static void write_csv_field(FILE *file, const char *text)
+{
+    int needs_quotes = 0;
+
+    if (!text) {
+        return;
+    }
+
+    for (size_t i = 0; text[i] != '\0'; i++) {
+        if (text[i] == '"' || text[i] == ',' || text[i] == '\n' || text[i] == '\r') {
+            needs_quotes = 1;
+            break;
+        }
+    }
+
+    if (!needs_quotes) {
+        fputs(text, file);
+        return;
+    }
+
+    fputc('"', file);
+    for (size_t i = 0; text[i] != '\0'; i++) {
+        if (text[i] == '"') {
+            fputc('"', file);
+        }
+        fputc(text[i], file);
+    }
+    fputc('"', file);
+}
+
+static void write_json_string(FILE *file, const char *text)
+{
+    fputc('"', file);
+    if (text) {
+        for (size_t i = 0; text[i] != '\0'; i++) {
+            unsigned char ch = (unsigned char)text[i];
+
+            switch (ch) {
+            case '"':
+                fputs("\\\"", file);
+                break;
+            case '\\':
+                fputs("\\\\", file);
+                break;
+            case '\b':
+                fputs("\\b", file);
+                break;
+            case '\f':
+                fputs("\\f", file);
+                break;
+            case '\n':
+                fputs("\\n", file);
+                break;
+            case '\r':
+                fputs("\\r", file);
+                break;
+            case '\t':
+                fputs("\\t", file);
+                break;
+            default:
+                if (ch < 0x20) {
+                    fprintf(file, "\\u%04x", ch);
+                } else {
+                    fputc(ch, file);
+                }
+                break;
+            }
+        }
+    }
+    fputc('"', file);
+}
+
 static int write_similarity_matrix(const EngineConfig *config, const DocumentList *docs, const SimilarityResults *similarity)
 {
     FILE *file = open_output_file(config->out_dir, "similarity_matrix.csv");
@@ -53,12 +128,13 @@ static int write_similarity_matrix(const EngineConfig *config, const DocumentLis
 
     fprintf(file, "document");
     for (int i = 0; i < docs->count; i++) {
-        fprintf(file, ",%s", docs->items[i].filename);
+        fputc(',', file);
+        write_csv_field(file, docs->items[i].filename);
     }
     fprintf(file, "\n");
 
     for (int row = 0; row < docs->count; row++) {
-        fprintf(file, "%s", docs->items[row].filename);
+        write_csv_field(file, docs->items[row].filename);
         for (int col = 0; col < docs->count; col++) {
             fprintf(file, ",%.3f", similarity_matrix_get(similarity, row, col));
         }
@@ -79,8 +155,8 @@ static int write_ai_scores(const EngineConfig *config, const AiScoreList *ai_sco
 
     fprintf(file, "filename,mean_perplexity,ppl_variance,ai_score,flagged\n");
     for (int i = 0; i < ai_scores->count; i++) {
-        fprintf(file, "%s,%.3f,%.3f,%.3f,%s\n",
-            ai_scores->items[i].filename,
+        write_csv_field(file, ai_scores->items[i].filename);
+        fprintf(file, ",%.3f,%.3f,%.3f,%s\n",
             ai_scores->items[i].mean_perplexity,
             ai_scores->items[i].perplexity_variance,
             ai_scores->items[i].ai_score,
@@ -103,16 +179,19 @@ static int write_report_json(const EngineConfig *config, const DocumentList *doc
     fprintf(file, "  \"meta\": {\n");
     fprintf(file, "    \"num_docs\": %d,\n", docs->count);
     fprintf(file, "    \"threads_used\": %d,\n", config->threads);
-    fprintf(file, "    \"mode\": \"%s\",\n", config->serial_mode ? "serial" : "openmp");
+    fprintf(file, "    \"mode\": \"%s\",\n",
+        config->mode == PARGUS_MODE_PTHREADS ? "pthreads" :
+        (config->mode == PARGUS_MODE_SERIAL ? "serial" : "openmp"));
     fprintf(file, "    \"sim_threshold\": %.6f,\n", config->sim_threshold);
     fprintf(file, "    \"ai_threshold\": %.6f\n", config->ai_threshold);
     fprintf(file, "  },\n");
 
     fprintf(file, "  \"documents\": [\n");
     for (int i = 0; i < docs->count; i++) {
-        fprintf(file, "    {\"doc_id\": %d, \"filename\": \"%s\", \"bytes\": %zu}%s\n",
-            docs->items[i].doc_id,
-            docs->items[i].filename,
+        fprintf(file, "    {\"doc_id\": %d, \"filename\": ",
+            docs->items[i].doc_id);
+        write_json_string(file, docs->items[i].filename);
+        fprintf(file, ", \"bytes\": %zu}%s\n",
             docs->items[i].length,
             i + 1 == docs->count ? "" : ",");
     }
@@ -130,12 +209,13 @@ static int write_report_json(const EngineConfig *config, const DocumentList *doc
     fprintf(file, "  \"flagged_pairs\": [\n");
     for (int i = 0; i < similarity->flagged_count; i++) {
         const PairScore *pair = &similarity->flagged_pairs[i];
-        fprintf(file,
-            "    {\"doc_a\": %d, \"doc_b\": %d, \"filename_a\": \"%s\", \"filename_b\": \"%s\", \"cosine\": %.6f, \"rabin_karp\": %.6f, \"combined\": %.6f}%s\n",
+        fprintf(file, "    {\"doc_a\": %d, \"doc_b\": %d, \"filename_a\": ",
             pair->a,
-            pair->b,
-            docs->items[pair->a].filename,
-            docs->items[pair->b].filename,
+            pair->b);
+        write_json_string(file, docs->items[pair->a].filename);
+        fprintf(file, ", \"filename_b\": ");
+        write_json_string(file, docs->items[pair->b].filename);
+        fprintf(file, ", \"cosine\": %.6f, \"rabin_karp\": %.6f, \"combined\": %.6f}%s\n",
             pair->cosine,
             pair->rabin_karp,
             pair->combined,
@@ -144,9 +224,10 @@ static int write_report_json(const EngineConfig *config, const DocumentList *doc
     fprintf(file, "  ],\n");
     fprintf(file, "  \"ai_scores\": [\n");
     for (int i = 0; i < ai_scores->count; i++) {
+        fprintf(file, "    {\"filename\": ");
+        write_json_string(file, ai_scores->items[i].filename);
         fprintf(file,
-            "    {\"filename\": \"%s\", \"mean_perplexity\": %.6f, \"perplexity_variance\": %.6f, \"ai_score\": %.6f, \"flagged\": %s}%s\n",
-            ai_scores->items[i].filename,
+            ", \"mean_perplexity\": %.6f, \"perplexity_variance\": %.6f, \"ai_score\": %.6f, \"flagged\": %s}%s\n",
             ai_scores->items[i].mean_perplexity,
             ai_scores->items[i].perplexity_variance,
             ai_scores->items[i].ai_score,
