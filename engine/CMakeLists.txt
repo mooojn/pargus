@@ -17,6 +17,8 @@ add_executable(Pargus
     config/args.c
     io/reader.c
     io/writer.c
+    parallel/doc_queue.c
+    parallel/work_queue.c
     nlp/stopwords.c
     nlp/tokenizer.c
     nlp/tfidf.c
@@ -99,6 +101,20 @@ if(UNIX)
     target_link_libraries(test_similarity PRIVATE m)
 endif()
 add_test(NAME similarity COMMAND test_similarity)
+
+add_executable(test_writer_escape
+    tests/test_writer_escape.c
+    common/string_utils.c
+    common/timing.c
+    config/args.c
+    io/writer.c
+    nlp/similarity.c
+)
+target_include_directories(test_writer_escape PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+if(UNIX)
+    target_link_libraries(test_writer_escape PRIVATE m)
+endif()
+add_test(NAME writer_escape COMMAND test_writer_escape)
 
 if(MSVC)
     target_compile_options(Pargus PRIVATE /W4)
