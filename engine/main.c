@@ -62,11 +62,13 @@ int main(int argc, char **argv)
         printf("Input: %s\n", config.input_dir);
         printf("Output: %s\n", config.out_dir);
         printf("Threads: %d\n", config.threads);
-        printf("Mode: %s\n", config.serial_mode ? "serial" : "openmp");
+        printf("Mode: %s\n",
+            config.mode == PARGUS_MODE_PTHREADS ? "pthreads" :
+            (config.mode == PARGUS_MODE_SERIAL ? "serial" : "openmp"));
     }
 
     io_start = pargus_now_ms();
-    if (!read_documents_from_dir(config.input_dir, &docs)) {
+    if (!read_documents_from_dir(config.input_dir, &config, &docs)) {
         return PARGUS_ERR_IO;
     }
     timings.io_ms = pargus_now_ms() - io_start;

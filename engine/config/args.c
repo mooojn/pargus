@@ -64,6 +64,7 @@ void config_init_defaults(EngineConfig *config)
     config->bands = 20;
     config->rows = 5;
     config->ngram = 3;
+    config->mode = PARGUS_MODE_OPENMP;
 }
 
 void print_usage(const char *program)
@@ -83,7 +84,7 @@ void print_usage(const char *program)
         "  --bands N                LSH bands, default 20\n"
         "  --rows N                 LSH rows, default 5\n"
         "  --ngram N                N-gram order, default 3\n"
-        "  --mode MODE              openmp or serial, default openmp\n"
+        "  --mode MODE              openmp, pthreads, or serial, default openmp\n"
         "  --benchmark              Print timing information\n"
         "  --verbose                Print loaded documents\n"
         "  --help                   Show this help\n",
@@ -135,10 +136,15 @@ int parse_args(int argc, char **argv, EngineConfig *config)
             }
             if (strcmp(next, "serial") == 0) {
                 config->serial_mode = 1;
+                config->mode = PARGUS_MODE_SERIAL;
             } else if (strcmp(next, "openmp") == 0) {
                 config->serial_mode = 0;
+                config->mode = PARGUS_MODE_OPENMP;
+            } else if (strcmp(next, "pthreads") == 0) {
+                config->serial_mode = 1;
+                config->mode = PARGUS_MODE_PTHREADS;
             } else {
-                fprintf(stderr, "Invalid mode: %s. Expected openmp or serial.\n", next);
+                fprintf(stderr, "Invalid mode: %s. Expected openmp, pthreads, or serial.\n", next);
                 return -1;
             }
             i++;
@@ -157,10 +163,9 @@ int parse_args(int argc, char **argv, EngineConfig *config)
         return -1;
     }
 
-    if (config->serial_mode) {
+    if (config->mode == PARGUS_MODE_SERIAL) {
         config->threads = 1;
     }
 
     return 0;
 }
-

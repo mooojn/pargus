@@ -11,6 +11,7 @@
 #include <windows.h>
 #else
 #include <dirent.h>
+#include <pthread.h>
 #include <sys/stat.h>
 #endif
 
@@ -42,25 +43,6 @@ void document_list_free(DocumentList *list)
     }
     free(list->items);
     document_list_init(list);
-}
-
-static int document_list_push(DocumentList *list, Document doc)
-{
-    Document *grown;
-    int new_capacity;
-
-    if (list->count == list->capacity) {
-        new_capacity = list->capacity == 0 ? 8 : list->capacity * 2;
-        grown = (Document *)realloc(list->items, (size_t)new_capacity * sizeof(Document));
-        if (!grown) {
-            return 0;
-        }
-        list->items = grown;
-        list->capacity = new_capacity;
-    }
-
-    list->items[list->count++] = doc;
-    return 1;
 }
 
 static int read_file_content(const char *path, char **content_out, size_t *length_out)
@@ -113,17 +95,48 @@ static int read_file_content(const char *path, char **content_out, size_t *lengt
     return 1;
 }
 
+#ifdef _WIN32
+static int document_list_push(DocumentList *list, Document doc)
+{
+    Document *grown;
+    int new_capacity;
+
+    if (list->count == list->capacity) {
+        new_capacity = list->capacity == 0 ? 8 : list->capacity * 2;
+        grown = (Document *)realloc(list->items, (size_t)new_capacity * sizeof(Document));
+        if (!grown) {
+            return 0;
+        }
+        list->items = grown;
+        list->capacity = new_capacity;
+    }
+
+    list->items[list->count++] = doc;
+    return 1;
+}
+#endif
+
+static int load_document_at(Document *doc, int doc_id, const char *path)
+{
+    memset(doc, 0, sizeof(*doc));
+    doc->doc_id = doc_id;
+    doc->path = pargus_strdup(path);
+    doc->filename = pargus_strdup(pargus_basename(path));
+
+    if (!doc->path || !doc->filename || !read_file_content(path, &doc->content, &doc->length)) {
+        document_free(doc);
+        return 0;
+    }
+
+    return 1;
+}
+
+#ifdef _WIN32
 static int add_document(DocumentList *docs, const char *path)
 {
     Document doc;
 
-    memset(&doc, 0, sizeof(doc));
-    doc.doc_id = docs->count;
-    doc.path = pargus_strdup(path);
-    doc.filename = pargus_strdup(pargus_basename(path));
-
-    if (!doc.path || !doc.filename || !read_file_content(path, &doc.content, &doc.length)) {
-        document_free(&doc);
+    if (!load_document_at(&doc, docs->count, path)) {
         return 0;
     }
 
@@ -135,15 +148,17 @@ static int add_document(DocumentList *docs, const char *path)
 
     return 1;
 }
+#endif
 
 #ifdef _WIN32
-int read_documents_from_dir(const char *input_dir, DocumentList *docs)
+int read_documents_from_dir(const char *input_dir, const EngineConfig *config, DocumentList *docs)
 {
     char pattern[1024];
     char path[1024];
     WIN32_FIND_DATAA find_data;
     HANDLE handle;
 
+    (void)config;
     document_list_init(docs);
 
     if (!pargus_join_path(pattern, sizeof(pattern), input_dir, "*.txt")) {
@@ -183,14 +198,78 @@ int read_documents_from_dir(const char *input_dir, DocumentList *docs)
     return 1;
 }
 #else
-int read_documents_from_dir(const char *input_dir, DocumentList *docs)
+typedef struct {
+    char **items;
+    int count;
+    int capacity;
+} PathList;
+
+typedef struct {
+    const PathList *paths;
+    DocumentList *docs;
+    int next_index;
+    int failed;
+    pthread_mutex_t mutex;
+} ReaderThreadState;
+
+static void path_list_init(PathList *list)
+{
+    list->items = NULL;
+    list->count = 0;
+    list->capacity = 0;
+}
+
+static void path_list_free(PathList *list)
+{
+    if (!list) {
+        return;
+    }
+    for (int i = 0; i < list->count; i++) {
+        free(list->items[i]);
+    }
+    free(list->items);
+    path_list_init(list);
+}
+
+static int path_list_push(PathList *list, const char *path)
+{
+    char **grown;
+    int new_capacity;
+
+    if (list->count == list->capacity) {
+        new_capacity = list->capacity == 0 ? 16 : list->capacity * 2;
+        grown = (char **)realloc(list->items, (size_t)new_capacity * sizeof(char *));
+        if (!grown) {
+            return 0;
+        }
+        list->items = grown;
+        list->capacity = new_capacity;
+    }
+
+    list->items[list->count] = pargus_strdup(path);
+    if (!list->items[list->count]) {
+        return 0;
+    }
+    list->count++;
+    return 1;
+}
+
+static int compare_paths(const void *left, const void *right)
+{
+    const char *a = *(char * const *)left;
+    const char *b = *(char * const *)right;
+
+    return strcmp(a, b);
+}
+
+static int discover_document_paths(const char *input_dir, PathList *paths)
 {
     DIR *dir;
     struct dirent *entry;
     char path[1024];
     struct stat st;
 
-    document_list_init(docs);
+    path_list_init(paths);
     dir = opendir(input_dir);
     if (!dir) {
         fprintf(stderr, "Failed to open input directory: %s\n", input_dir);
@@ -203,28 +282,172 @@ int read_documents_from_dir(const char *input_dir, DocumentList *docs)
         }
         if (!pargus_join_path(path, sizeof(path), input_dir, entry->d_name)) {
             closedir(dir);
-            document_list_free(docs);
+            path_list_free(paths);
             fprintf(stderr, "Document path is too long: %s\n", entry->d_name);
             return 0;
         }
         if (stat(path, &st) != 0 || !S_ISREG(st.st_mode)) {
             continue;
         }
-        if (!add_document(docs, path)) {
+        if (!path_list_push(paths, path)) {
             closedir(dir);
-            document_list_free(docs);
+            path_list_free(paths);
+            fprintf(stderr, "Out of memory storing document path\n");
             return 0;
         }
     }
 
     closedir(dir);
 
-    if (docs->count == 0) {
+    if (paths->count == 0) {
         fprintf(stderr, "No .txt documents found in: %s\n", input_dir);
+        return 0;
+    }
+
+    qsort(paths->items, (size_t)paths->count, sizeof(char *), compare_paths);
+    return 1;
+}
+
+static int document_list_allocate(DocumentList *docs, int count)
+{
+    document_list_init(docs);
+    docs->items = (Document *)calloc((size_t)count, sizeof(Document));
+    if (!docs->items && count > 0) {
+        return 0;
+    }
+    docs->count = count;
+    docs->capacity = count;
+    return 1;
+}
+
+static void *reader_worker(void *arg)
+{
+    ReaderThreadState *state = (ReaderThreadState *)arg;
+
+    for (;;) {
+        int index;
+
+        pthread_mutex_lock(&state->mutex);
+        if (state->failed || state->next_index >= state->paths->count) {
+            pthread_mutex_unlock(&state->mutex);
+            break;
+        }
+        index = state->next_index++;
+        pthread_mutex_unlock(&state->mutex);
+
+        if (!load_document_at(&state->docs->items[index], index, state->paths->items[index])) {
+            pthread_mutex_lock(&state->mutex);
+            state->failed = 1;
+            pthread_mutex_unlock(&state->mutex);
+            break;
+        }
+    }
+
+    return NULL;
+}
+
+static int load_documents_serial(const PathList *paths, DocumentList *docs)
+{
+    if (!document_list_allocate(docs, paths->count)) {
+        fprintf(stderr, "Out of memory allocating document list\n");
+        return 0;
+    }
+
+    for (int i = 0; i < paths->count; i++) {
+        if (!load_document_at(&docs->items[i], i, paths->items[i])) {
+            document_list_free(docs);
+            return 0;
+        }
+    }
+
+    return 1;
+}
+
+static int load_documents_pthreads(const PathList *paths, const EngineConfig *config, DocumentList *docs)
+{
+    pthread_t *threads;
+    ReaderThreadState state;
+    int thread_count = config->threads;
+    int ok = 1;
+
+    if (thread_count < 1) {
+        thread_count = 1;
+    }
+    if (thread_count > paths->count) {
+        thread_count = paths->count;
+    }
+    if (thread_count <= 1) {
+        return load_documents_serial(paths, docs);
+    }
+
+    if (!document_list_allocate(docs, paths->count)) {
+        fprintf(stderr, "Out of memory allocating document list\n");
+        return 0;
+    }
+
+    memset(&state, 0, sizeof(state));
+    state.paths = paths;
+    state.docs = docs;
+    if (pthread_mutex_init(&state.mutex, NULL) != 0) {
+        document_list_free(docs);
+        fprintf(stderr, "Failed to initialize Pthreads reader mutex\n");
+        return 0;
+    }
+
+    threads = (pthread_t *)calloc((size_t)thread_count, sizeof(pthread_t));
+    if (!threads) {
+        pthread_mutex_destroy(&state.mutex);
+        document_list_free(docs);
+        fprintf(stderr, "Out of memory allocating reader threads\n");
+        return 0;
+    }
+
+    for (int i = 0; i < thread_count; i++) {
+        if (pthread_create(&threads[i], NULL, reader_worker, &state) != 0) {
+            pthread_mutex_lock(&state.mutex);
+            state.failed = 1;
+            pthread_mutex_unlock(&state.mutex);
+            thread_count = i;
+            ok = 0;
+            break;
+        }
+    }
+
+    for (int i = 0; i < thread_count; i++) {
+        pthread_join(threads[i], NULL);
+    }
+
+    if (state.failed) {
+        ok = 0;
+    }
+
+    free(threads);
+    pthread_mutex_destroy(&state.mutex);
+
+    if (!ok) {
+        document_list_free(docs);
         return 0;
     }
 
     return 1;
 }
-#endif
 
+int read_documents_from_dir(const char *input_dir, const EngineConfig *config, DocumentList *docs)
+{
+    PathList paths;
+    int ok;
+
+    if (!discover_document_paths(input_dir, &paths)) {
+        return 0;
+    }
+
+    if (config && config->mode == PARGUS_MODE_PTHREADS) {
+        ok = load_documents_pthreads(&paths, config, docs);
+    } else {
+        ok = load_documents_serial(&paths, docs);
+    }
+
+    path_list_free(&paths);
+    return ok;
+}
+#endif
