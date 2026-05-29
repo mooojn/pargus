@@ -1,1 +1,11 @@
 context/
+data/*
+!data/sample/
+!data/sample/**
+!data/sample_corpus.txt
+output/
+engine/build/
+engine/Pargus.exe
+engine/Pargus
+*.obj
+*.o
