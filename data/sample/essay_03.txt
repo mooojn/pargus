@@ -1,0 +1,2 @@
+Parallel computing divides work into smaller pieces that can run at the same time. This copied paragraph is useful for testing plagiarism detection later.
+

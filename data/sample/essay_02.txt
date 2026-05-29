@@ -1,0 +1,2 @@
+Document similarity can be measured by comparing the important words in each file. TF-IDF gives higher weight to terms that are useful for distinguishing one document from another.
+

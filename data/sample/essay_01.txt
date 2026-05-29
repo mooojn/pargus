@@ -1,0 +1,2 @@
+Parallel computing divides work into smaller pieces that can run at the same time. This project uses that idea to analyze many student documents faster than a serial program.
+
