@@ -1,36 +1,92 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Pargus — Frontend Web Dashboard
 
-## Getting Started
+This is the Next.js frontend web application for **Pargus** (Parallel Pipeline for Plagiarism Detection and AI Authorship Analysis). It provides an interactive interface to trigger corpus analysis, configure parameters, view execution progress, inspect plagiarism matrices, and visualize performance benchmarks.
 
-First, run the development server:
+---
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+## 🛠️ Tech Stack & Styling
+
+- **Framework**: Next.js 14+ (App Router)
+- **State Management & Logic**: React 19 (Hooks, Context, Refs)
+- **API Communication**: Axios (with custom wrappers in `lib/api.ts`)
+- **Styling**: Tailwind CSS v4 + Custom design tokens (in `app/globals.css`)
+- **Visualizations & Charts**: Recharts (Heatmap grid, line charts, and stage bars)
+
+---
+
+## 📁 Directory Structure
+
+```
+frontend/
+├── app/
+│   ├── page.tsx                    # Premium Landing Page (Home)
+│   ├── upload/
+│   │   └── page.tsx                # Drag-and-drop document uploader & configuration
+│   ├── jobs/
+│   │   └── [jobId]/
+│   │       └── page.tsx            # Real-time job polling and stage progress bars
+│   ├── results/
+│   │   └── [jobId]/
+│   │       └── page.tsx            # Results dashboard (summary cards, LSH matrix, tables)
+│   ├── benchmark/
+│   │   └── page.tsx                # Thread execution time comparisons and Amdahl's Law fit
+│   ├── layout.tsx                  # Root layout containing the shared Navbar
+│   └── globals.css                 # Global custom styles and color variables
+├── components/
+│   ├── Navbar.tsx                  # Navigation header bar
+│   ├── SimilarityHeatmap.tsx       # Recharts-based matrix cell visualization
+│   └── SpeedupChart.tsx            # Scaling & stage timeline comparison charts
+├── lib/
+│   └── api.ts                      # Axios wrappers mapping endpoints to FastAPI backend
+├── package.json
+└── tsconfig.json
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+---
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## 🚀 Getting Started
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+### 1. Prerequisites
 
-## Learn More
+Make sure the FastAPI backend is running. By default, the frontend attempts to connect to the backend at `http://127.0.0.1:8000`.
 
-To learn more about Next.js, take a look at the following resources:
+### 2. Install Dependencies
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Using `pnpm` (recommended) or `npm`:
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+```bash
+pnpm install
+# or
+npm install
+```
 
-## Deploy on Vercel
+### 3. Run Development Server
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+Launch the dev environment locally:
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```bash
+pnpm dev
+# or
+npm run dev
+```
+
+Open [http://localhost:3000](http://localhost:3000) to access the landing page.
+
+### 4. Build for Production
+
+Compile a production bundle:
+
+```bash
+pnpm build
+npm run start
+```
+
+---
+
+## 🔗 Route Map & Pages
+
+1. **Home Page (`/`)**: High-impact landing page highlighting parallel engine architecture, speedup benchmarks, and project statistics.
+2. **Analysis Config (`/upload`)**: Select the parallelism engine (OpenMP or Pthreads), choose thread count, set thresholds, and drop target `.txt` files.
+3. **Job Tracker (`/jobs/[jobId]`)**: Shows which stage (I/O, TF-IDF, MinHash/LSH, Cosine/RK, Perplexity) is executing.
+4. **Results Hub (`/results/[jobId]`)**: Includes similarity matrices, AI-flagged documents, and direct CSV/JSON report downloads.
+5. **Benchmarks (`/benchmark`)**: Triggers engine scaling test runs and visualizes Amdahl's Law curves.
