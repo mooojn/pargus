@@ -138,8 +138,8 @@ def job_dir(job_id: str) -> Path:
     return JOBS_DIR / job_id
 
 
-def update_job(job_id: str, **values: object) -> None:
-    JOBS.setdefault(job_id, {}).update(values)
+def update_job(job_key: str, **values: object) -> None:
+    JOBS.setdefault(job_key, {}).update(values)
 
 
 def get_job_or_404(job_id: str) -> Dict[str, object]:

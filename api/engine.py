@@ -139,13 +139,22 @@ def normalize_report(job_id: str, report: Dict[str, Any]) -> Dict[str, Any]:
             }
         )
 
+    ai_scores = []
+    for score in report.get("ai_scores", []):
+        ai_scores.append(
+            {
+                **score,
+                "ppl_variance": score.get("perplexity_variance", score.get("ppl_variance", 0.0)),
+            }
+        )
+
     return {
         "job_id": job_id,
         "num_docs": report.get("meta", {}).get("num_docs", len(docs)),
         "documents": docs,
         "similarity_matrix": report.get("similarity_matrix", []),
         "flagged_pairs": flagged_pairs,
-        "ai_scores": report.get("ai_scores", []),
+        "ai_scores": ai_scores,
         "runtime_ms": runtime_ms,
         "speedup": report.get("benchmark", {}).get("speedup_vs_serial"),
         "meta": report.get("meta", {}),
