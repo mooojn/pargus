@@ -8,6 +8,8 @@ data/*
 !data/stopwords.txt
 output/
 api/jobs/
+benchmarks/results/
+benchmarks/generated/
 __pycache__/
 *.pyc
 engine/build/
