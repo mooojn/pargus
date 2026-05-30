@@ -1,0 +1,1 @@
+"""Pargus FastAPI bridge."""
