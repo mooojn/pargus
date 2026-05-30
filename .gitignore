@@ -1,3 +1,5 @@
+.venv/
+.venv-wsl
 context/
 data/*
 !data/sample/
@@ -5,6 +7,9 @@ data/*
 !data/sample_corpus.txt
 !data/stopwords.txt
 output/
+api/jobs/
+__pycache__/
+*.pyc
 engine/build/
 engine/*.exe
 engine/Pargus
